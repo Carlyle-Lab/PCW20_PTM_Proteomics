@@ -1,0 +1,32 @@
+{
+    "id": "7597D400",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1739815863351.0,
+    "source_on_save": false,
+    "relative_order": 7,
+    "properties": {
+        "expression": "All_missing",
+        "caption": "All_missing",
+        "totalObservations": 66,
+        "displayedObservations": 66,
+        "variables": 2,
+        "cacheKey": "3D0EE9A2",
+        "object": "All_missing",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=All_missing&cache_key=3D0EE9A2&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 0,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1739815863351,
+    "read_only": false,
+    "read_only_alternatives": []
+}

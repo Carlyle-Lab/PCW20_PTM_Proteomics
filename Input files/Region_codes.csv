@@ -1,0 +1,19 @@
+Region,Short_name
+Frontal Cortex,FC
+Cingulate Cortex,CC
+Motor Cortex,MC
+Insular Cortex/Claustrum,IC/C
+Parietal Cortex,PC
+Somatosensory Cortex,SC
+Primary Visual Cortex,V1C
+Occipital Cortex,OC
+Pia mater (anterior),PMA
+Pia mater (medial),PMM
+Pia mater (posterior),PMP
+Hippocampus (anterior),HPA
+Hippocampus (posterior),HPP
+Thalamus (anterior),THA
+Thalamus (medial),THM
+Thalamus (posterior),THP
+Hypothalamus,HYP
+Striatum,STR

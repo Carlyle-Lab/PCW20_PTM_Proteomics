@@ -1,0 +1,14 @@
+library(seqinr)
+
+contam_FASTA <- read.fasta("0602_Universal Contaminants.fasta")
+
+head(contam_FASTA)
+
+contam_annots <- getAnnot(contam_FASTA)
+tmp <- data.frame(flatten_chr(contam_annots))
+
+Uniprot_contam <- tmp %>%
+  separate(flatten_chr.contam_annots., into = c(NA, "Uniprot", NA), sep = "\\|") %>%
+  separate(Uniprot, into = c(NA, "Accession"), sep = "_")
+
+write_csv(Uniprot_contam, "Contaminants_Accession.csv")

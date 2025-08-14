@@ -1,0 +1,32 @@
+{
+    "id": "1304BAD5",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1739815614474.0,
+    "source_on_save": false,
+    "relative_order": 5,
+    "properties": {
+        "expression": "Protein_NAs",
+        "caption": "Protein_NAs",
+        "totalObservations": 7874,
+        "displayedObservations": 7874,
+        "variables": 2,
+        "cacheKey": "38B6CDB4",
+        "object": "Protein_NAs",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=Protein_NAs&cache_key=38B6CDB4&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 0,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1739815614474,
+    "read_only": false,
+    "read_only_alternatives": []
+}

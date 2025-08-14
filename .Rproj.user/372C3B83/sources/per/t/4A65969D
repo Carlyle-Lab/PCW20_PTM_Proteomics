@@ -1,0 +1,32 @@
+{
+    "id": "4A65969D",
+    "path": null,
+    "project_path": null,
+    "type": "r_dataframe",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1739887911528.0,
+    "source_on_save": false,
+    "relative_order": 9,
+    "properties": {
+        "expression": "PC1_tails_to_heatmap",
+        "caption": "PC1_tails_to_heatmap",
+        "totalObservations": 40,
+        "displayedObservations": 40,
+        "variables": 19,
+        "cacheKey": "C9139E7A",
+        "object": "PC1_tails_to_heatmap",
+        "environment": "",
+        "contentUrl": "grid_resource/gridviewer.html?env=&obj=PC1_tails_to_heatmap&cache_key=C9139E7A&max_cols=50",
+        "preview": 0
+    },
+    "folds": "",
+    "lastKnownWriteTime": 0,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1739887911528,
+    "read_only": false,
+    "read_only_alternatives": []
+}

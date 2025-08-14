@@ -1,0 +1,468 @@
+library(tidyverse)
+library(openxlsx)
+
+Non_mod_two_peps_data <- read.xlsx("Supplementary tables/Table S1.xlsx", sheet = "Table S1a  non mod")
+colnames(Non_mod_two_peps_data)
+
+head(Non_mod_two_peps_data)
+
+ID_conversion <- read_tsv("Human_reference_biomart.txt") %>%
+  select(`UniProtKB/Swiss-Prot ID`, `Gene name`) %>%
+  rename(Accession = `UniProtKB/Swiss-Prot ID`) %>%
+  rename(Gene_symbol = `Gene name`)
+
+contaminants <- read_csv("Contaminants_Accession.csv")
+
+# Make a nice long dataframe using Normalized abundances for each protein, and convert Uniprot ID to Gene symbol.  Remove common contaminants. Convert zeroes to NAs
+Non_mod_abundance <- Non_mod_two_peps_data %>%
+  select(Accession, `Abundances.(Normalized):.F1:.127N,.Sample,.Cingulate.Cortex`: `Abundances.(Normalized):.F1:.132N,.Sample,.Thalamus.(posterior)`) %>%
+  pivot_longer(-Accession, names_to = "Region", values_to = "Norm_quant") %>%
+  separate(Region, into = c(NA, NA, "Region"), sep = ",\\.") %>%
+  filter(!(Accession %in% contaminants$Accession)) %>%
+  left_join(ID_conversion) %>%
+  select(Accession,Gene_symbol, Region, Norm_quant) %>%
+  unique() %>%
+  mutate(Norm_quant = ifelse(Norm_quant == 0, NA, Norm_quant)) %>%
+  mutate(Region = gsub("\\.", " ", Region)) %>%
+  mutate(Region = gsub("Perietal Cortex", "Parietal Cortex", Region)) %>%
+  mutate(Region = gsub("Pia matter \\(anterior\\)", "Pia mater (anterior)", Region))
+
+
+
+Protein_NAs <- Non_mod_abundance %>%
+  group_by(Accession) %>%
+  summarise(n_NA = sum(is.na(Norm_quant))) %>%
+  filter(n_NA < 19)
+
+All_missing <- Protein_NAs %>%
+  filter(n_NA == 18) 
+
+##Some proteins are entirely NAs - filter out
+
+filt_non_mod_abundance <- Non_mod_abundance %>%
+  filter(!(Accession %in% All_missing$Accession))
+table(Protein_NAs$n_NA)
+
+Protein_NAs <- filt_non_mod_abundance %>%
+  group_by(Accession) %>%
+  summarise(n_NA = sum(is.na(Norm_quant))) %>%
+  filter(n_NA < 19)
+
+
+NM_protein_NAs <- ggplot(Protein_NAs, aes(x = n_NA)) + geom_histogram(binwidth = 1) + xlab("Number of missing values per protein") + xlim(-1,18)
+ggsave("Figures/NM_protein_NAs.pdf", width = 10, height = 10, units = "cm") 
+## Full rows of NAs are present in the original spreadsheet - not an artefact of ID conversion
+## Filter out proteins with empty rows
+
+
+write_csv(filt_non_mod_abundance, "NM_filt_to_use.csv")
+
+
+sample_NAs <- filt_non_mod_abundance %>%
+  group_by(Region) %>%
+  summarise(n_NA = sum(is.na(Norm_quant)))
+
+ggplot(sample_NAs, aes(x = n_NA)) +geom_histogram()
+
+##Very few missing values as you would expect from a TMT plex - no need to perform any further NA filters
+
+
+##Stability of acquisition sample by sample
+
+NM_all_protein_abundanc <- ggplot(filt_non_mod_abundance, aes(x = Region, y = log2(Norm_quant))) + geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylab("log2(Non-modified protein abundance)")
+
+
+ggsave("Figures/NM_protein_abundance_boxplots.pdf", width = 10, height = 10, units = "cm")
+
+##Looks great - no need to normalise further
+
+
+## Substitute tiny number of NAs with zeroes and pivot wider for PCA
+
+NM_for_PCA <- filt_non_mod_abundance %>%
+  mutate_all(~ifelse(is.na(.x), 0, .x)) %>%
+  select(-Gene_symbol) %>%
+  pivot_wider(names_from = Accession, values_from = Norm_quant, values_fn = sum) %>%
+  column_to_rownames("Region") 
+
+
+NMQ_PCA <- prcomp(NM_for_PCA, 
+                  center = TRUE, 
+                  scale. = TRUE)
+
+plot(NMQ_PCA)
+
+plot(NMQ_PCA, type = "l")
+
+summary(NMQ_PCA)
+
+PC_data <- data.frame(NMQ_PCA$x) %>%
+  rownames_to_column("Region") %>%
+  mutate(Region = factor(Region, levels = c("Frontal Cortex", "Cingulate Cortex", "Motor Cortex", "Insular Cortex/Claustrum",
+                            "Parietal Cortex", "Somatosensory Cortex", "Primary Visual Cortex", "Occipital Cortex",
+                            "Pia mater (anterior)", "Pia mater (medial)", "Pia mater (posterior)", "Hippocampus (anterior)",
+                            "Hippocampus (posterior)", "Thalamus (anterior)", "Thalamus (medial)", "Thalamus (posterior)",
+                            "Hypothalamus", "Striatum")))
+head(PC_data)
+
+
+
+Region_col = c("Cingulate Cortex" = "#08519c", "Frontal Cortex" = "#3182bd", "Hippocampus (anterior)" = "#feb24c", 
+               "Hippocampus (posterior)" = "#fed976", "Hypothalamus" = "#999999", "Insular Cortex/Claustrum"  = "#6baed6",
+               "Motor Cortex" = "#9ecae1", "Occipital Cortex" = "#c6dbef", "Parietal Cortex" = "#54278f",
+               "Pia mater (medial)" = "#fd8d3c", "Pia mater (posterior)" = "#f03b20", "Pia mater (anterior)"= "#bd0026", 
+               "Primary Visual Cortex" = "#9e9ac8" , "Somatosensory Cortex"  = "#756bb1", "Striatum" = "#252525", 
+               "Thalamus (anterior)" = "#006837", "Thalamus (medial)" = "#d9f0a3", "Thalamus (posterior)" = "#78c679")
+
+
+library(ggrepel)
+ggplot(PC_data, aes(x = PC1, y = PC2, label = Region)) + 
+  geom_point(aes(color = Region), size = 3, show.legend = FALSE) + 
+  geom_text_repel() +
+  scale_color_manual(values = Region_col) + theme_bw()
+
+ggsave("Figures/NM_PCA_all_regions.pdf", width = 15, height = 15, units = "cm")
+
+##PC plot shows a few clusters and some outliers. Group into Pia (3 regions), Thalamus (3 regions), Cortex (8 regions)
+## Hippocampus (2 regions), Striatum, Hypothalamus
+
+
+PCA_loadings <- NMQ_PCA$rotation 
+
+PC1_loadings <- data.frame(PCA_loadings) %>%
+  rownames_to_column("Accession") %>%
+  select(Accession, PC1) %>%
+  arrange(desc(PC1))
+
+write_csv(PC1_loadings, "Intermediate files/NM_PC1 loadings.csv")
+
+STRING_GSEA_PC1 <- read_tsv("STRING files/NM PC1 GSEA BP.tsv")
+
+##dotplot for top terms
+
+GSEA_PC1_most_sig <- STRING_GSEA_PC1 %>%
+  slice_min(order_by = `false discovery rate`, n = 20)
+
+dot_color <- c("top" = "#e9a3c9", "bottom" = "#a1d76a")
+
+ggplot(GSEA_PC1_most_sig, aes(x = `enrichment score`, y = reorder(`term description`, `enrichment score`), size = `genes mapped`, color = direction)) +
+  geom_point() + theme_bw() + xlim(0,8) + scale_color_manual(values = dot_color)
+ggsave("Figures/NM_PC1_GSEA.pdf", width = 20, height = 10, units = "cm") 
+
+
+
+
+
+
+##list tail genes for heatmap
+list_tails <- PC1_loadings %>%
+  mutate(rank = rank(PC1)) %>%
+  filter(rank < 21 | rank > max(rank)-20 )
+
+to_plot_tails <- list_tails %>%
+  left_join(filt_non_mod_abundance)
+
+##Two Uniprot accessions have no gene symbol
+## P30622-1
+## P60953-1
+unique_IDs <- to_plot_tails %>%
+  select(Accession, Gene_symbol) %>%
+  unique()
+
+ID_manual <- tibble(Accession = c("P30622-1", "P60953-1"), Gene_symbol = c("CLIP1", "CDC42"))
+
+ID_conv_PC1 <- to_plot_tails %>%
+  select(Accession, Gene_symbol) %>%
+  unique() %>%
+  filter(!is.na(Gene_symbol)) %>%
+  bind_rows(ID_manual)
+  
+
+
+
+PC1_tails_to_heatmap <- to_plot_tails %>%
+  select(-Gene_symbol) %>%
+  left_join(ID_conv_PC1) %>%
+  select(-c(PC1, rank, Accession)) %>%
+  pivot_wider(names_from = Region, values_from = Norm_quant) %>%
+  column_to_rownames("Gene_symbol")
+
+
+library(gplots)
+
+pdf("Figures/NM_PC1_heatmap.pdf", width=8, height=8)  
+heatmap.2(t(as.matrix(log2(PC1_tails_to_heatmap))), trace = "none", 
+          scale="col", 
+          col=colorRampPalette(c("steelblue","white","darkred"))(50))
+
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+##PCA just for cortex
+
+cortical_rows <- grep("Cortex", rownames(NM_for_PCA))
+cortical_regions_for_PCA <- NM_for_PCA[cortical_rows,]
+
+
+cortex_PCA <- prcomp(cortical_regions_for_PCA, 
+                     center = TRUE, 
+                     scale. = TRUE)
+
+plot(cortex_PCA)
+
+plot(cortex_PCA, type = "l")
+
+summary(cortex_PCA)
+
+cortex_PC_data <- data.frame(cortex_PCA$x) %>%
+  rownames_to_column("Region")
+head(cortex_PC_data)
+
+ggplot(cortex_PC_data, aes(x = PC1, y = PC2, label = Region)) + geom_point(aes(color = Region, alpha = 0.6), size = 5) + geom_text(hjust=0, vjust=0) +
+  scale_color_manual(values = Region_col)
+
+cortex_rotations <- data.frame(cortex_PCA$rotation)
+
+cortex_PC1_loadings <- cortex_rotations %>%
+  rownames_to_column("Gene") %>%
+  select(Gene, PC1)
+
+write_csv(cortex_PC1_loadings, "cortex_PC1_loadings.csv")
+  
+
+
+##How many transcription factors do we detect?
+
+TF_true <- read_csv("TF_list.csv")
+
+TFs_in_data <- filt_non_mod_abundance %>%
+  filter(Gene_symbol %in% TF_true$Name)
+
+unique(TFs_in_data$Gene_symbol)  
+  
+n_TFs <- length(unique(TF_true$Name))
+n_in_data <- length(unique(TFs_in_data$Gene_symbol))
+
+TF_stats <- tibble("Transcription factors" = c("All", "In brain data"), "Count" = c(n_TFs,n_in_data))
+
+ggplot(to_venn, aes(x="", y=Count, fill=`Transcription factors`)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  coord_polar("y", start=0) + 
+  scale_fill_brewer(palette="RdYlBu") + theme(panel.background = element_blank())
+ggsave("Figures/TF_pie_chart.pdf", width = 15, height =15, units = "cm")
+
+TFs_to_PCA <- TFs_in_data %>%
+  mutate_all(~ifelse(is.na(.x), 0, .x)) %>%
+  pivot_wider(names_from = Gene_symbol, values_from = Norm_quant, values_fn = sum) %>%
+  column_to_rownames("Region")
+
+
+TF_PCA <- prcomp(TFs_to_PCA, 
+                    center = TRUE, 
+                    scale. = TRUE)
+
+plot(TF_PCA)
+
+plot(TF_PCA, type = "l")
+
+summary(TF_PCA)
+
+TF_PC_data <- data.frame(TF_PCA$x) %>%
+  rownames_to_column("Region")
+head(TF_PC_data)
+
+
+ggplot(TF_PC_data, aes(x = PC1, y = PC2, label = Region)) + geom_point(aes(color = Region, alpha = 0.6), size = 5) + geom_text(hjust=0, vjust=0) +
+  scale_color_manual(values = Region_col)
+
+##Looks very similar with Pia and thalamus driving a lot of the changes - go down to just cortex
+
+
+cortical_rows <- grep("Cortex", rownames(TFs_to_PCA))
+cortical_regions_for_TF_PCA <- TFs_to_PCA[cortical_rows,]
+
+cortical_TF_PCA <- prcomp(cortical_regions_for_TF_PCA, 
+                 center = TRUE, 
+                 scale. = TRUE)
+
+plot(cortical_TF_PCA)
+
+
+PCA_summary <- as.data.frame(t(summary(cortical_TF_PCA)$importance)) %>%
+  rownames_to_column(var = "PC") %>%
+  filter(PC != "PC8")
+ 
+ggplot(PCA_summary, aes(x = PC, y = `Proportion of Variance`)) + geom_bar(stat = "identity") + theme_bw() +
+  xlab("Principal Component")
+ggsave("Figures/TF_PCA_variance.pdf", width = 15, height = 8, units = "cm") 
+
+
+cortical_TF_PC_data <- data.frame(cortical_TF_PCA$x) %>%
+  rownames_to_column("Region") %>%
+  mutate(Region = factor(Region, levels = c("Frontal Cortex", "Cingulate Cortex", "Motor Cortex", "Insular Cortex/Claustrum",
+                                            "Parietal Cortex", "Somatosensory Cortex", "Primary Visual Cortex", "Occipital Cortex")))
+head(cortical_TF_PC_data)
+
+##PC plot for transcription factors in cortex
+ggplot(cortical_TF_PC_data, aes(x = PC1, y = PC2, label = Region)) + 
+  geom_point(aes(color = Region), size = 3, show.legend = FALSE)  +
+  scale_color_manual(values = Region_col) + geom_text_repel() + theme_bw()
+ggsave("Figures/TF_NM_PCA_plot.pdf", width = 10, height = 10, units = "cm") 
+
+
+cortical_TF_PCA_long <- cortical_TF_PC_data %>%
+  pivot_longer(-Region, names_to = "PC", values_to = "loadings") %>%
+  mutate(Region = factor(Region, levels = c("Frontal Cortex", "Cingulate Cortex", "Motor Cortex", "Insular Cortex/Claustrum",
+                                            "Parietal Cortex", "Somatosensory Cortex", "Primary Visual Cortex", "Occipital Cortex"))) %>%
+  filter(PC != "PC8")
+
+ggplot(cortical_TF_PC_data, aes(x = PC3, y = PC4, label = Region)) + 
+  geom_point(aes(color = Region), size = 3, show.legend = FALSE)  +
+  scale_color_manual(values = Region_col) + geom_text_repel() + theme_bw()
+ggsave("Figures/TF_NM_PCA_plot_PC3_4.pdf", width = 10, height = 10, units = "cm") 
+
+
+
+ggplot(cortical_TF_PCA_long, aes(x = Region, y = loadings, label = Region)) + geom_boxplot(aes(color = Region), show.legend = FALSE) + 
+  scale_color_manual(values = Region_col) + facet_wrap(~PC, ncol = 4) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+CTX_TFs_loadings <- data.frame(cortical_TF_PCA$rotation) %>%
+  rownames_to_column("Gene_symbol") %>%
+  pivot_longer(-Gene_symbol, names_to = "PC", values_to = "Rotation") %>%
+  filter(PC != "PC8")
+
+CTX_TFs_loading_tails_min <- data.frame(CTX_TFs_loadings) %>%
+  group_by(PC) %>%
+  slice_min(order_by = `Rotation`, n = 10)
+
+
+CTX_TF_indices <- grep("Cortex", TFs_in_data$Region)
+CTX_TFs_in_data <- TFs_in_data[CTX_TF_indices,]
+
+CTX_TFs_loading_tails <- data.frame(CTX_TFs_loadings) %>%
+  group_by(PC) %>%
+  slice_max(order_by = `Rotation`, n = 10) %>%
+  ungroup() %>%
+  bind_rows(CTX_TFs_loading_tails_min) %>%
+  filter(PC == "PC1" | PC == "PC2" | PC == "PC3" | PC == "PC4") %>%
+  left_join(CTX_TFs_in_data)
+
+CTX_TFs_PC1_to_heatmap <- CTX_TFs_loading_tails %>%
+  filter(PC == "PC1") %>%
+  select(-c(PC, Rotation)) %>%
+  pivot_wider(names_from = Gene_symbol, values_from = Norm_quant)%>%
+  column_to_rownames(var = "Region")
+
+
+##PC1 TF heatmap
+##Correct rando transpose call!
+heatmap.2(t(as.matrix(log2(CTX_TFs_PC1_to_heatmap))), trace = "none", 
+          scale="row", 
+          col=colorRampPalette(c("steelblue","white","darkred"))(50))
+
+CTX_TFs_PC2_to_heatmap <- CTX_TFs_loading_tails %>%
+  filter(PC == "PC2") %>%
+  select(-c(PC, Rotation)) %>%
+  pivot_wider(names_from = Gene_symbol, values_from = Norm_quant)%>%
+  column_to_rownames(var = "Region")
+
+
+##PC2 TF heatmap
+heatmap.2(t(as.matrix(log2(CTX_TFs_PC2_to_heatmap))), trace = "none", 
+          scale="row", 
+          col=colorRampPalette(c("steelblue","white","darkred"))(50))
+
+
+CTX_TFs_PC3_4_to_heatmap <- CTX_TFs_loading_tails %>%
+  filter(PC == "PC3" | PC == "PC4") %>%
+  select(-c(PC, Rotation)) %>%
+  pivot_wider(names_from = Gene_symbol, values_from = Norm_quant) %>%
+  slice(2,1,4,3,6,8,7,5) %>%
+  column_to_rownames(var = "Region") 
+  
+  
+
+
+##PC3_4 TF heatmap
+heatmap.2(as.matrix(log2(CTX_TFs_PC3_4_to_heatmap)), trace = "none", 
+          scale="col", Rowv = FALSE, dendrogram = "col",
+          col=colorRampPalette(c("steelblue","white","darkred"))(50))
+
+##Line graph rather than heatmap?
+
+CTX_TFs_PC3_4_to_line <- CTX_TFs_loading_tails %>%
+  filter(PC == "PC3" | PC == "PC4") %>%
+  mutate(Region = factor(Region, levels = c("Frontal Cortex", "Cingulate Cortex", "Motor Cortex", "Insular Cortex/Claustrum",
+                                            "Parietal Cortex", "Somatosensory Cortex", "Primary Visual Cortex", "Occipital Cortex"))) %>%
+  mutate(Direction = ifelse(Rotation > 0, "Top", "Bottom"))
+
+summary_line <- CTX_TFs_PC3_4_to_line %>%
+  group_by(PC, Direction, Region) %>%
+  summarise(mean_val = mean(Norm_quant))
+
+ggplot(summary_line, aes(x = Region, y = log2(mean_val), group = PC)) + 
+  geom_line() +
+  facet_grid(rows = vars(Direction), cols = vars(PC)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + geom_smooth(method = "lm")
+
+
+PC34_line_plot <-  ggplot(CTX_TFs_PC3_4_to_line, aes(x = Region, y = log2(Norm_quant))) + 
+  geom_line(aes(group = Gene_symbol, color = Gene_symbol)) +
+  facet_grid(rows = vars(Direction), cols = vars(PC), scales = "free_y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  geom_smooth(data = summary_line, aes(x=Region, y=log2(mean_val), group = PC),  method = "lm") +
+  geom_text(data = subset(CTX_TFs_PC3_4_to_line, Region == "Occipital Cortex"), aes(label = Gene_symbol, colour = Gene_symbol), hjust = -.1) +
+  scale_colour_discrete(guide = 'none') +
+  scale_x_discrete(expand = expansion(mult = c(0.05, 0.3))) + theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + geom_smooth(method = "lm")
+
+
+ggsave("Figures/PC3_4_line_plots.pdf", width = 20, height = 20, units = "cm")
+
+
+
+## Top TFs with established roles in cortical development
+
+cortex <- c("Cingulate Cortex"     ,    "Frontal Cortex"     ,      "Insular Cortex/Claustrum", "Motor Cortex"   ,     "Occipital Cortex"  ,      
+            "Parietal Cortex"    ,      "Primary Visual Cortex"  ,  "Somatosensory Cortex"   )
+
+Key_TFs <- c("PAX6", "EOMES", "TBR1", "BCL11B", "BCL11A", "SOX5", "SATB2", "CUX1", "CUX2", "RORB")
+
+Key_TF_data <- filt_non_mod_abundance %>%
+  filter(Gene_symbol %in% Key_TFs) %>%
+  filter(Region %in% cortex) 
+
+ggplot(Key_TF_data, aes(x = Region, y = log2(Norm_quant), group = Gene_symbol)) + geom_point() + 
+  geom_line(aes(group = Gene_symbol, color = Gene_symbol)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+
+library(gplots)
+
+Key_TF_matrix <- Key_TF_data %>%
+  pivot_wider(names_from = Region, values_from = Norm_quant) %>%
+  column_to_rownames(var = "Gene_symbol")
+  
+
+
+heatmap.2(t(as.matrix(log2(Key_TF_matrix))), trace = "none", 
+          scale="col", 
+          col=colorRampPalette(c("steelblue","white","darkred"))(50))
+
+
+
+
+
